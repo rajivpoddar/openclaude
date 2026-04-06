@@ -562,7 +562,7 @@ test('normalizes plain string Bash tool arguments from OpenAI-compatible respons
   ])
 })
 
-test('normalizes Bash tool arguments that are valid JSON literals', async () => {
+test('normalizes Bash tool arguments that are valid JSON strings', async () => {
   globalThis.fetch = (async (_input, _init) => {
     return new Response(
       JSON.stringify({
@@ -578,7 +578,7 @@ test('normalizes Bash tool arguments that are valid JSON literals', async () => 
                   type: 'function',
                   function: {
                     name: 'Bash',
-                    arguments: '123',
+                    arguments: '"pwd"',
                   },
                 },
               ],
@@ -617,10 +617,77 @@ test('normalizes Bash tool arguments that are valid JSON literals', async () => 
       type: 'tool_use',
       id: 'function-call-1',
       name: 'Bash',
-      input: { command: '123' },
+      input: { command: 'pwd' },
     },
   ])
 })
+
+test.each([
+  ['false', false],
+  ['null', null],
+  ['[]', []],
+])(
+  'preserves malformed Bash JSON literals as parsed values in non-streaming responses: %s',
+  async (argumentsValue, expectedInput) => {
+    globalThis.fetch = (async (_input, _init) => {
+      return new Response(
+        JSON.stringify({
+          id: 'chatcmpl-1',
+          model: 'google/gemini-3.1-pro-preview',
+          choices: [
+            {
+              message: {
+                role: 'assistant',
+                tool_calls: [
+                  {
+                    id: 'function-call-1',
+                    type: 'function',
+                    function: {
+                      name: 'Bash',
+                      arguments: argumentsValue,
+                    },
+                  },
+                ],
+              },
+              finish_reason: 'tool_calls',
+            },
+          ],
+          usage: {
+            prompt_tokens: 12,
+            completion_tokens: 4,
+            total_tokens: 16,
+          },
+        }),
+        {
+          headers: {
+            'Content-Type': 'application/json',
+          },
+        },
+      )
+    }) as FetchType
+
+    const client = createOpenAIShimClient({}) as OpenAIShimClient
+
+    const message = await client.beta.messages.create({
+      model: 'google/gemini-3.1-pro-preview',
+      system: 'test system',
+      messages: [{ role: 'user', content: 'Use Bash' }],
+      max_tokens: 64,
+      stream: false,
+    }) as {
+      content?: Array<Record<string, unknown>>
+    }
+
+    expect(message.content).toEqual([
+      {
+        type: 'tool_use',
+        id: 'function-call-1',
+        name: 'Bash',
+        input: expectedInput,
+      },
+    ])
+  },
+)
 
 test('keeps terminal empty Bash tool arguments invalid in non-streaming responses', async () => {
   globalThis.fetch = (async (_input, _init) => {

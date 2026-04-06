@@ -45,7 +45,7 @@ export function normalizeToolArguments(
         }
         return wrapPlainStringToolArguments(toolName, parsed) ?? parsed
       }
-      return wrapPlainStringToolArguments(toolName, rawArguments) ?? rawArguments
+      return parsed
     }
     if (typeof parsed === 'string') {
       return wrapPlainStringToolArguments(toolName, parsed) ?? parsed
