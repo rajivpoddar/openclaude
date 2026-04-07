@@ -292,7 +292,6 @@ export const inputSchema = lazySchema(() =>
   z.object({
     skill: z
       .string()
-      .optional()
       .describe('The skill name. E.g., "commit", "review-pr", or "pdf"'),
     args: z.string().optional().describe('Optional arguments for the skill'),
   }),

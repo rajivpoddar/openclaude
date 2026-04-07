@@ -3,15 +3,14 @@ import { describe, expect, test } from 'bun:test'
 import { SkillTool } from './SkillTool.js'
 
 describe('SkillTool missing parameter handling', () => {
-  test('missing skill reaches validateInput with an actionable error', async () => {
+  test('missing skill stays required at the schema level', async () => {
     const parsed = SkillTool.inputSchema.safeParse({})
 
-    expect(parsed.success).toBe(true)
-    if (!parsed.success) {
-      throw new Error('expected SkillTool schema to allow missing skill for custom validation')
-    }
+    expect(parsed.success).toBe(false)
+  })
 
-    const result = await SkillTool.validateInput?.(parsed.data as never, {
+  test('validateInput still returns an actionable error when called with missing skill', async () => {
+    const result = await SkillTool.validateInput?.({} as never, {
       options: { tools: [] },
       messages: [],
     } as never)
