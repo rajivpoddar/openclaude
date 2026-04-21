@@ -1468,7 +1468,6 @@ export default class Ink {
     this.cursorDeclaration = decl;
   };
   render(node: ReactNode): void {
-    logForDebugging('[Ink:render] start');
     this.currentNode = node;
     const tree = <App stdin={this.options.stdin} stdout={this.options.stdout} stderr={this.options.stderr} exitOnCtrlC={this.options.exitOnCtrlC} onExit={this.unmount} terminalColumns={this.terminalColumns} terminalRows={this.terminalRows} selection={this.selection} onSelectionChange={this.notifySelectionChange} onClickAt={this.dispatchClick} onHoverAt={this.dispatchHover} getHyperlinkAt={this.getHyperlinkAt} onOpenHyperlink={this.openHyperlink} onMultiClick={this.handleMultiClick} onSelectionDrag={this.handleSelectionDrag} onStdinResume={this.reassertTerminalModes} onCursorDeclaration={this.setCursorDeclaration} dispatchKeyboardEvent={this.dispatchKeyboardEvent}>
         <TerminalWriteProvider value={this.writeRaw}>
@@ -1480,7 +1479,6 @@ export default class Ink {
     reconciler.updateContainerSync(tree, this.container, null, noop);
     // @ts-expect-error flushSyncWork exists in react-reconciler but not in @types/react-reconciler
     reconciler.flushSyncWork();
-    logForDebugging('[Ink:render] updateContainer complete');
   }
   unmount(error?: Error | number | null): void {
     if (this.isUnmounted) {

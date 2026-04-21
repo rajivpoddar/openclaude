@@ -1,6 +1,6 @@
 import { feature } from 'bun:bundle'
 import { basename } from 'path'
-import { useCallback, useEffect, useRef } from 'react'
+import { startTransition, useCallback, useEffect, useRef, useState } from 'react'
 import { getSessionId } from '../../bootstrap/state.js'
 import type { Command } from '../../commands.js'
 import type { Tool } from '../../Tool.js'
@@ -59,6 +59,7 @@ import {
   useAppStateStore,
   useSetAppState,
 } from '../../state/AppState.js'
+import { isBareMode } from '../../utils/envUtils.js'
 import { errorMessage } from '../../utils/errors.js'
 /* eslint-enable @typescript-eslint/no-require-imports */
 import { logMCPDebug, logMCPError } from '../../utils/log.js'
@@ -144,6 +145,26 @@ export function useManageMCPConnections(
   dynamicMcpConfig: Record<string, ScopedMcpServerConfig> | undefined,
   isStrictMcpConfig = false,
 ) {
+  const forceInteractiveStartupMcp =
+    process.env.OPENCLAUDE_DEBUG_FORCE_STARTUP_MCP === '1'
+  const isInteractiveStartup =
+    process.stdin.isTTY === true && !forceInteractiveStartupMcp
+  // The configured "zen" stdio server reproducibly blocks interactive prompt
+  // rendering during eager startup. Keep it visible in /mcp, but don't auto-
+  // connect it while the REPL is booting.
+  const shouldBlockZenInteractiveStartup = isInteractiveStartup
+  const bareMode = isBareMode()
+  const [startupReady, setStartupReady] = useState(bareMode)
+  useEffect(() => {
+    if (startupReady || bareMode) {
+      return
+    }
+    // Defer MCP startup until after the initial REPL mount. With several
+    // stdio servers configured, the startup state churn can make the prompt
+    // appear frozen before the first interactive frame settles.
+    const timer = setTimeout(() => setStartupReady(true), 250)
+    return () => clearTimeout(timer)
+  }, [startupReady, bareMode])
   const store = useAppStateStore()
   const _authVersion = useAppState(s => s.authVersion)
   // Incremented by /reload-plugins (refreshActivePlugins) to pick up newly
@@ -152,6 +173,14 @@ export function useManageMCPConnections(
   // fresh plugin data on re-run.
   const _pluginReconnectKey = useAppState(s => s.mcp.pluginReconnectKey)
   const setAppState = useSetAppState()
+  const setBackgroundAppState = useCallback(
+    (updater: (prev: AppState) => AppState) => {
+      startTransition(() => {
+        setAppState(updater)
+      })
+    },
+    [setAppState],
+  )
 
   // Track active reconnection attempts to allow cancellation
   const reconnectTimersRef = useRef<Map<string, NodeJS.Timeout>>(new Map())
@@ -186,18 +215,18 @@ export function useManageMCPConnections(
       // undefined → never sends → intercept has nothing pending → "yes tbxkq"
       // flows to Claude as normal chat. One gate, full disable.
       if (!isChannelPermissionRelayEnabled()) return
-      setAppState(prev => {
+      setBackgroundAppState(prev => {
         if (prev.channelPermissionCallbacks === callbacks) return prev
         return { ...prev, channelPermissionCallbacks: callbacks }
       })
       return () => {
-        setAppState(prev => {
+        setBackgroundAppState(prev => {
           if (prev.channelPermissionCallbacks === undefined) return prev
           return { ...prev, channelPermissionCallbacks: undefined }
         })
       }
     }
-  }, [setAppState])
+  }, [setBackgroundAppState])
   const { addNotification } = useNotifications()
 
   // Batched MCP state updates: queue individual server updates and flush them
@@ -219,7 +248,7 @@ export function useManageMCPConnections(
     if (updates.length === 0) return
     pendingUpdatesRef.current = []
 
-    setAppState(prevState => {
+    setBackgroundAppState(prevState => {
       let mcp = prevState.mcp
 
       for (const update of updates) {
@@ -288,7 +317,7 @@ export function useManageMCPConnections(
 
       return { ...prevState, mcp }
     })
-  }, [setAppState])
+  }, [setBackgroundAppState])
 
   // Update server state, tools, commands, and resources.
   // When tools, commands, or resources are undefined, the existing values are preserved.
@@ -770,6 +799,10 @@ export function useManageMCPConnections(
   // useEffect below runs immediately after and dedups before connecting.
   const sessionId = getSessionId()
   useEffect(() => {
+    if (bareMode || !startupReady) {
+      return
+    }
+
     async function initializeServersAsPending() {
       const { servers: existingConfigs, errors: mcpErrors } = isStrictMcpConfig
         ? { servers: {}, errors: [] }
@@ -777,9 +810,9 @@ export function useManageMCPConnections(
       const configs = { ...existingConfigs, ...dynamicMcpConfig }
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
-      addErrorsToAppState(setAppState, mcpErrors)
+      addErrorsToAppState(setBackgroundAppState, mcpErrors)
 
-      setAppState(prevState => {
+      setBackgroundAppState(prevState => {
         // Disconnect MCP servers that are stale: plugin servers removed from
         // config, or any server whose config hash changed (edited .mcp.json).
         // Stale servers get re-added as 'pending' below since their name is
@@ -846,9 +879,11 @@ export function useManageMCPConnections(
       )
     })
   }, [
+    bareMode,
+    startupReady,
     isStrictMcpConfig,
     dynamicMcpConfig,
-    setAppState,
+    setBackgroundAppState,
     sessionId,
     _pluginReconnectKey,
   ])
@@ -856,6 +891,10 @@ export function useManageMCPConnections(
   // Load MCP configs and connect to servers
   // Two-phase loading: Claude Code configs first (fast), then claude.ai configs (may be slow)
   useEffect(() => {
+    if (bareMode || !startupReady) {
+      return
+    }
+
     let cancelled = false
 
     async function loadAndConnectMcpConfigs() {
@@ -882,14 +921,18 @@ export function useManageMCPConnections(
       if (cancelled) return
 
       // Add MCP errors to plugin errors for UI visibility (deduplicated)
-      addErrorsToAppState(setAppState, mcpErrors)
+      addErrorsToAppState(setBackgroundAppState, mcpErrors)
 
       const configs = { ...claudeCodeConfigs, ...dynamicMcpConfig }
 
       // Start connecting to Claude Code servers (don't wait - runs concurrently with Phase 2)
       // Filter out disabled servers to avoid unnecessary connection attempts
       const enabledConfigs = Object.fromEntries(
-        Object.entries(configs).filter(([name]) => !isMcpServerDisabled(name)),
+        Object.entries(configs).filter(
+          ([name]) =>
+            !isMcpServerDisabled(name) &&
+            !(shouldBlockZenInteractiveStartup && name === 'zen'),
+        ),
       )
       getMcpToolsCommandsAndResources(
         onConnectionAttempt,
@@ -922,7 +965,7 @@ export function useManageMCPConnections(
 
         if (Object.keys(claudeaiConfigs).length > 0) {
           // Add claude.ai servers as pending immediately so they show up in UI
-          setAppState(prevState => {
+          setBackgroundAppState(prevState => {
             const existingServerNames = new Set(
               prevState.mcp.clients.map(c => c.name),
             )
@@ -948,7 +991,9 @@ export function useManageMCPConnections(
           // Now start connecting (only enabled servers)
           const enabledClaudeaiConfigs = Object.fromEntries(
             Object.entries(claudeaiConfigs).filter(
-              ([name]) => !isMcpServerDisabled(name),
+              ([name]) =>
+                !isMcpServerDisabled(name) &&
+                !(shouldBlockZenInteractiveStartup && name === 'zen'),
             ),
           )
           getMcpToolsCommandsAndResources(
@@ -1014,10 +1059,13 @@ export function useManageMCPConnections(
       cancelled = true
     }
   }, [
+    bareMode,
+    startupReady,
+    shouldBlockZenInteractiveStartup,
     isStrictMcpConfig,
     dynamicMcpConfig,
     onConnectionAttempt,
-    setAppState,
+    setBackgroundAppState,
     _authVersion,
     sessionId,
     _pluginReconnectKey,
