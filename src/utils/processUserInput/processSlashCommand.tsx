@@ -606,10 +606,12 @@ async function getMessagesForSlashCommand(commandName: string, args: string, set
                 submitNextInput: options?.submitNextInput
               });
             };
-            void command.load().then(mod => mod.call(onDone, {
-              ...context,
-              canUseTool
-            }, args)).then(jsx => {
+            void command.load().then(mod => {
+              return mod.call(onDone, {
+                ...context,
+                canUseTool
+              }, args);
+            }).then(jsx => {
               if (jsx == null) return;
               if (context.options.isNonInteractiveSession) {
                 void resolve({

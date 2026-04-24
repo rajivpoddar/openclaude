@@ -33,7 +33,7 @@ import { updateLastInteractionTime, getLastInteractionTime, getOriginalCwd, getP
 import { asSessionId, asAgentId } from '../types/ids.js';
 import { logForDebugging } from '../utils/debug.js';
 import { QueryGuard } from '../utils/QueryGuard.js';
-import { isEnvTruthy } from '../utils/envUtils.js';
+import { isBareMode, isEnvTruthy } from '../utils/envUtils.js';
 import { formatTokens, truncateToWidth } from '../utils/format.js';
 import { consumeEarlyInput } from '../utils/earlyInput.js';
 import { setMemberActive } from '../utils/swarm/teamHelpers.js';
@@ -780,7 +780,7 @@ export function REPL({
 
   // Initialize plugin management
   const pluginCommands = useManagePlugins({
-    enabled: !isRemoteSession
+    enabled: !isRemoteSession && !isBareMode()
   });
   const tasksV2 = useTasksV2WithCollapseEffect();
 
@@ -3826,6 +3826,10 @@ export function REPL({
     // Always verify API key on startup, so we can show the user an error in the
     // bottom right corner of the screen if the API key is invalid.
     void reverify();
+
+    if (isBareMode()) {
+      return;
+    }
 
     // Populate readFileState with CLAUDE.md files at startup
     const memoryFiles = await getMemoryFiles();

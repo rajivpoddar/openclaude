@@ -278,6 +278,9 @@ if ("external" !== 'ant' && isBeingDebugged()) {
  * call sites here rather than one here + one in QueryEngine.
  */
 function logSessionTelemetry(): void {
+  if (isBareMode()) {
+    return;
+  }
   const model = parseUserSpecifiedModel(getInitialMainLoopModel() ?? getDefaultMainLoopModel());
   void logSkillsLoaded(getCwd(), getContextWindowForModel(model, getSdkBetas()));
   void loadAllPluginsCacheOnly().then(({
