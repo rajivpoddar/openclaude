@@ -1,0 +1,20 @@
+{
+  "hooks": {},
+  "enabledPlugins": {
+    "frontend-design@claude-plugins-official": true,
+    "explanatory-output-style@claude-plugins-official": true,
+    "code-review@claude-plugins-official": true,
+    "feature-dev@claude-plugins-official": true,
+    "code-simplifier@claude-plugins-official": true,
+    "adversarial-spec@zscole-adversarial-spec": true,
+    "claude-md-management@claude-plugins-official": true,
+    "master-of-panes@rajiv-plugins": true,
+    "codex@openai-codex": true,
+    "claude-mem@thedotmack": true
+  },
+  "mcpServers": {},
+  "statusLine": {
+    "type": "command",
+    "command": "true"
+  }
+}

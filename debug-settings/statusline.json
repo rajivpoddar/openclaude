@@ -1,0 +1,9 @@
+{
+  "hooks": {},
+  "enabledPlugins": {},
+  "mcpServers": {},
+  "statusLine": {
+    "type": "command",
+    "command": "/Users/rajiv/.claude/statusline-command.sh"
+  }
+}

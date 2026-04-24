@@ -1,0 +1,21 @@
+{
+  "hooks": {
+    "SessionStart": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash /Users/rajiv/.claude/hooks/atma-session-start.sh",
+            "timeout": 10
+          }
+        ]
+      }
+    ]
+  },
+  "enabledPlugins": {},
+  "mcpServers": {},
+  "statusLine": {
+    "type": "command",
+    "command": "true"
+  }
+}

@@ -187,11 +187,11 @@ export function TaskListV2({
   }
   const content = <>
       {visibleTasks.map(task_0 => <TaskItem key={task_0.id} task={task_0} ownerColor={task_0.owner ? teammateColors[task_0.owner] : undefined} openBlockers={task_0.blockedBy.filter(id_3 => unresolvedTaskIds.has(id_3))} activity={task_0.owner ? teammateActivity[task_0.owner] : undefined} ownerActive={task_0.owner ? activeTeammates.has(task_0.owner) : false} columns={columns} />)}
-      {maxDisplay > 0 && hiddenSummary && <FullWidthRow><Text dimColor>{hiddenSummary}</Text></FullWidthRow>}
+      {maxDisplay > 0 && hiddenSummary && <FullWidthRow opaque><Text dimColor wrap="truncate-end">{hiddenSummary}</Text></FullWidthRow>}
     </>;
   if (isStandalone) {
     return <Box flexDirection="column" marginTop={1} marginLeft={2} width="100%">
-        <Box width="100%">
+        <Box width="100%" opaque>
           <Text dimColor>
             <Text bold>{tasks.length}</Text>
             {' tasks ('}
@@ -341,7 +341,7 @@ function TaskItem(t0) {
   }
   let t10;
   if ($[26] !== t5 || $[27] !== t7 || $[28] !== t8 || $[29] !== t9) {
-    t10 = <FullWidthRow>{t5}{t7}{t8}{t9}</FullWidthRow>;
+    t10 = <FullWidthRow opaque>{t5}{t7}{t8}{t9}</FullWidthRow>;
     $[26] = t5;
     $[27] = t7;
     $[28] = t8;
@@ -352,7 +352,13 @@ function TaskItem(t0) {
   }
   let t11;
   if ($[31] !== displayActivity || $[32] !== showActivity) {
-    t11 = showActivity && displayActivity && <FullWidthRow><Text dimColor={true}>{"  "}{displayActivity}{figures.ellipsis}</Text></FullWidthRow>;
+    t11 = showActivity && displayActivity && (
+      <Box width="100%" opaque>
+        <Text dimColor={true} wrap="truncate-end">
+          {"  "}{displayActivity}{figures.ellipsis}
+        </Text>
+      </Box>
+    );
     $[31] = displayActivity;
     $[32] = showActivity;
     $[33] = t11;
