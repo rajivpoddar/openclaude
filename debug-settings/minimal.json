@@ -1,0 +1,9 @@
+{
+  "hooks": {},
+  "enabledPlugins": {},
+  "mcpServers": {},
+  "statusLine": {
+    "type": "command",
+    "command": "true"
+  }
+}
