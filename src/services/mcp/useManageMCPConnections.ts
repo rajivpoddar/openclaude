@@ -149,10 +149,6 @@ export function useManageMCPConnections(
     process.env.OPENCLAUDE_DEBUG_FORCE_STARTUP_MCP === '1'
   const isInteractiveStartup =
     process.stdin.isTTY === true && !forceInteractiveStartupMcp
-  // The configured "zen" stdio server reproducibly blocks interactive prompt
-  // rendering during eager startup. Keep it visible in /mcp, but don't auto-
-  // connect it while the REPL is booting.
-  const shouldBlockZenInteractiveStartup = isInteractiveStartup
   const bareMode = isBareMode()
   const [startupReady, setStartupReady] = useState(bareMode)
   useEffect(() => {
@@ -929,9 +925,7 @@ export function useManageMCPConnections(
       // Filter out disabled servers to avoid unnecessary connection attempts
       const enabledConfigs = Object.fromEntries(
         Object.entries(configs).filter(
-          ([name]) =>
-            !isMcpServerDisabled(name) &&
-            !(shouldBlockZenInteractiveStartup && name === 'zen'),
+          ([name]) => !isMcpServerDisabled(name),
         ),
       )
       getMcpToolsCommandsAndResources(
@@ -991,9 +985,7 @@ export function useManageMCPConnections(
           // Now start connecting (only enabled servers)
           const enabledClaudeaiConfigs = Object.fromEntries(
             Object.entries(claudeaiConfigs).filter(
-              ([name]) =>
-                !isMcpServerDisabled(name) &&
-                !(shouldBlockZenInteractiveStartup && name === 'zen'),
+              ([name]) => !isMcpServerDisabled(name),
             ),
           )
           getMcpToolsCommandsAndResources(
@@ -1061,7 +1053,6 @@ export function useManageMCPConnections(
   }, [
     bareMode,
     startupReady,
-    shouldBlockZenInteractiveStartup,
     isStrictMcpConfig,
     dynamicMcpConfig,
     onConnectionAttempt,
