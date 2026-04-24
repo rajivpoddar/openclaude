@@ -347,13 +347,7 @@ function enforceStrictSchema(schema: unknown): Record<string, unknown> {
         // strip it silently and then complain about a 'required' mismatch if it remains in the required list.
         // E.g. z.record() objects (like AskUserQuestion.answers) lose their schema due to additionalProperties 
         // restrictions. We can safely drop these from the schema sent to the LLM.
-        if (
-          strictValue &&
-          typeof strictValue === 'object' &&
-          strictValue.type === 'object' &&
-          strictValue.additionalProperties === false &&
-          (!strictValue.properties || Object.keys(strictValue.properties).length === 0)
-        ) {
+        if (isEmptyStrictObjectSchema(strictValue) || isArrayOfEmptyStrictObjectSchema(strictValue)) {
           continue
         }
         enforcedProps[key] = strictValue
@@ -383,6 +377,31 @@ function enforceStrictSchema(schema: unknown): Record<string, unknown> {
   }
 
   return record
+}
+
+function isEmptyStrictObjectSchema(schema: unknown): schema is Record<string, unknown> {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return false
+  }
+
+  const record = schema as Record<string, unknown>
+  return (
+    record.type === 'object' &&
+    record.additionalProperties === false &&
+    (!record.properties ||
+      (typeof record.properties === 'object' &&
+        !Array.isArray(record.properties) &&
+        Object.keys(record.properties).length === 0))
+  )
+}
+
+function isArrayOfEmptyStrictObjectSchema(schema: unknown): boolean {
+  if (!schema || typeof schema !== 'object' || Array.isArray(schema)) {
+    return false
+  }
+
+  const record = schema as Record<string, unknown>
+  return record.type === 'array' && isEmptyStrictObjectSchema(record.items)
 }
 
 export function convertToolsToResponsesTools(

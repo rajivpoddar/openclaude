@@ -516,6 +516,46 @@ describe('Codex request translation', () => {
     ])
   })
 
+  test('drops array fields with arbitrary object items from strict Responses schemas', () => {
+    const tools = convertToolsToResponsesTools([
+      {
+        name: 'mcp__zen__analyze',
+        description: 'Analyze files',
+        input_schema: {
+          type: 'object',
+          properties: {
+            step: { type: 'string' },
+            findings: { type: 'string' },
+            issues_found: {
+              type: 'array',
+              items: { type: 'object' },
+              description: 'Issues or concerns identified',
+            },
+          },
+          required: ['step', 'findings'],
+        },
+      },
+    ])
+
+    expect(tools).toEqual([
+      {
+        type: 'function',
+        name: 'mcp__zen__analyze',
+        description: 'Analyze files',
+        parameters: {
+          type: 'object',
+          properties: {
+            step: { type: 'string' },
+            findings: { type: 'string' },
+          },
+          required: ['step', 'findings'],
+          additionalProperties: false,
+        },
+        strict: true,
+      },
+    ])
+  })
+
   test('converts assistant tool use and user tool result into Responses items', () => {
     const items = convertAnthropicMessagesToResponsesInput([
       {
