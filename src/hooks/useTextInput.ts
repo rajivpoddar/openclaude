@@ -122,6 +122,21 @@ export function useTextInput({
         : { value: nextValue, offset: nextOffset },
     )
   }
+  const resyncSubmittedInputIfUncommitted = (
+    submittedValue: string,
+  ): void => {
+    setTimeout(() => {
+      if (
+        liveValueRef.current === submittedValue &&
+        lastSeenPropsRef.current.value !== submittedValue
+      ) {
+        updateRenderedInput(
+          lastSeenPropsRef.current.value,
+          lastSeenPropsRef.current.offset,
+        )
+      }
+    }, 0).unref?.()
+  }
   useLayoutEffect(() => {
     if (
       lastSeenPropsRef.current.value === originalValue &&
@@ -346,6 +361,7 @@ export function useTextInput({
       return cursor.insert('\n')
     }
     onSubmit?.(currentValue)
+    resyncSubmittedInputIfUncommitted(currentValue)
   }
 
   function upOrHistoryUp() {
@@ -575,6 +591,7 @@ export function useTextInput({
         filteredInput[filteredInput.length - 2] !== '\\'
       ) {
         onSubmit?.(nextCursor.text)
+        resyncSubmittedInputIfUncommitted(nextCursor.text)
       }
     }
   }
