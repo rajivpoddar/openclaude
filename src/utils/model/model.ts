@@ -477,6 +477,7 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
     const copilotModelNames: Record<string, string> = {
       'gpt-5.4': 'GPT-5.4',
       'gpt-5.4-mini': 'GPT-5.4 mini',
+      'gpt-5.5': 'GPT-5.5',
       'gpt-5.3-codex': 'GPT-5.3 Codex',
       'gpt-5.2-codex': 'GPT-5.2 Codex',
       'gpt-5.2': 'GPT-5.2',
@@ -501,6 +502,8 @@ export function getPublicModelDisplayName(model: ModelName): string | null {
     return null
   }
   switch (model) {
+    case 'gpt-5.5':
+      return 'GPT-5.5'
     case 'gpt-5.4':
       return 'GPT-5.4'
     case 'gpt-5.3-codex-spark':
@@ -639,6 +642,9 @@ export function parseUserSpecifiedModel(
   }
   if (modelString === 'codexspark') {
     return 'gpt-5.3-codex-spark'
+  }
+  if (modelString === 'gpt5.5') {
+    return 'gpt-5.5'
   }
 
   // Opus 4/4.1 are no longer available on the first-party API (same as

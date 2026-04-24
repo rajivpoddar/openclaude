@@ -1,5 +1,5 @@
-import { existsSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { resolve } from 'node:path'
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { dirname, resolve } from 'node:path'
 import {
   DEFAULT_CODEX_BASE_URL,
   DEFAULT_OPENAI_BASE_URL,
@@ -32,8 +32,12 @@ export {
 import { isEnvTruthy } from './envUtils.ts'
 
 import { PROVIDERS } from './configConstants.js'
+import {
+  CLI_MODEL_ENV_KEY,
+  CLI_PROVIDER_ENV_KEY,
+} from './providerFlag.js'
 
-export const PROFILE_FILE_NAME = '.openclaude-profile.json'
+export const PROFILE_FILE_NAME = '.claude/profile.json'
 export const DEFAULT_GEMINI_BASE_URL =
   'https://generativelanguage.googleapis.com/v1beta/openai'
 export const DEFAULT_GEMINI_MODEL = 'gemini-2.0-flash'
@@ -479,6 +483,7 @@ export function saveProfileFile(
   options?: ProfileFileLocation,
 ): string {
   const filePath = resolveProfileFilePath(options)
+  mkdirSync(dirname(filePath), { recursive: true })
   writeFileSync(filePath, JSON.stringify(profileFile, null, 2), {
     encoding: 'utf8',
     mode: 0o600,
@@ -548,6 +553,13 @@ export async function buildLaunchEnv(options: {
   const shellOpenAIBaseUrl = sanitizeProviderConfigValue(
     processEnv.OPENAI_BASE_URL,
     processEnv as SecretValueSource,
+  )
+  const cliSelectedOpenAIProvider =
+    processEnv[CLI_PROVIDER_ENV_KEY] === 'openai'
+  const cliSelectedOpenAIModel = Boolean(
+    cliSelectedOpenAIProvider &&
+      processEnv[CLI_MODEL_ENV_KEY] &&
+      processEnv[CLI_MODEL_ENV_KEY] === shellOpenAIModel,
   )
   const persistedGeminiModel = sanitizeProviderConfigValue(
     persistedEnv.GEMINI_MODEL,
@@ -810,13 +822,19 @@ export async function buildLaunchEnv(options: {
     baseUrl: persistedOpenAIBaseUrl,
     fallbackModel: defaultOpenAIModel,
   })
-  const useShellOpenAIConfig = shellOpenAIRequest.transport === 'chat_completions'
+  const useShellOpenAIConfig =
+    Boolean(cliSelectedOpenAIModel) ||
+    shellOpenAIRequest.transport === 'chat_completions'
   const usePersistedOpenAIConfig =
-    (!persistedOpenAIModel && !persistedOpenAIBaseUrl) ||
-    persistedOpenAIRequest.transport === 'chat_completions'
+    !cliSelectedOpenAIModel &&
+    (
+      (!persistedOpenAIModel && !persistedOpenAIBaseUrl) ||
+      persistedOpenAIRequest.transport === 'chat_completions'
+    )
 
   env.OPENAI_BASE_URL =
     (useShellOpenAIConfig ? shellOpenAIBaseUrl : undefined) ||
+    (cliSelectedOpenAIModel ? DEFAULT_OPENAI_BASE_URL : undefined) ||
     (usePersistedOpenAIConfig ? persistedOpenAIBaseUrl : undefined) ||
     DEFAULT_OPENAI_BASE_URL
   env.OPENAI_MODEL =

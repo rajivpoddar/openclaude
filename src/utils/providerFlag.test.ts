@@ -16,6 +16,8 @@ const ENV_KEYS = [
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
   'GEMINI_MODEL',
+  'OPENCLAUDE_CLI_PROVIDER',
+  'OPENCLAUDE_CLI_MODEL',
 ]
 
 const originalEnv: Record<string, string | undefined> = {}
@@ -37,6 +39,8 @@ const RESET_KEYS = [
   'OPENAI_API_KEY',
   'OPENAI_MODEL',
   'GEMINI_MODEL',
+  'OPENCLAUDE_CLI_PROVIDER',
+  'OPENCLAUDE_CLI_MODEL',
 ] as const
 
 beforeEach(() => {
@@ -104,6 +108,8 @@ describe('applyProviderFlag - openai', () => {
   test('sets OPENAI_MODEL when --model is provided', () => {
     applyProviderFlag('openai', ['--model', 'gpt-4o'])
     expect(process.env.OPENAI_MODEL).toBe('gpt-4o')
+    expect(process.env.OPENCLAUDE_CLI_PROVIDER).toBe('openai')
+    expect(process.env.OPENCLAUDE_CLI_MODEL).toBe('gpt-4o')
   })
 })
 

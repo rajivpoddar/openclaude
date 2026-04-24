@@ -25,6 +25,10 @@ import {
   selectAutoProfile,
   type ProfileFile,
 } from './providerProfile.ts'
+import {
+  CLI_MODEL_ENV_KEY,
+  CLI_PROVIDER_ENV_KEY,
+} from './providerFlag.ts'
 
 function makeJwt(payload: Record<string, unknown>): string {
   const header = Buffer.from(JSON.stringify({ alg: 'none', typ: 'JWT' }))
@@ -126,6 +130,27 @@ test('openai launch ignores codex shell transport hints', async () => {
   assert.equal(env.OPENAI_BASE_URL, 'https://api.openai.com/v1')
   assert.equal(env.OPENAI_MODEL, 'gpt-4o')
   assert.equal(env.OPENAI_API_KEY, 'sk-live')
+})
+
+test('openai launch preserves explicit CLI gpt-5.5 model over saved profile defaults', async () => {
+  const env = await buildStartupEnvFromProfile({
+    persisted: profile('openai', {
+      OPENAI_BASE_URL: 'https://api.openai.com/v1',
+      OPENAI_MODEL: 'gpt-4o',
+      OPENAI_API_KEY: 'sk-persisted',
+    }),
+    processEnv: {
+      CLAUDE_CODE_USE_OPENAI: '1',
+      OPENAI_MODEL: 'gpt-5.5',
+      [CLI_PROVIDER_ENV_KEY]: 'openai',
+      [CLI_MODEL_ENV_KEY]: 'gpt-5.5',
+    },
+  })
+
+  assert.equal(env.CLAUDE_CODE_USE_OPENAI, '1')
+  assert.equal(env.OPENAI_MODEL, 'gpt-5.5')
+  assert.equal(env.OPENAI_BASE_URL, 'https://api.openai.com/v1')
+  assert.equal(env.OPENAI_API_KEY, 'sk-persisted')
 })
 
 test('openai launch ignores codex persisted transport hints', async () => {

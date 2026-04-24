@@ -92,6 +92,43 @@ describe('Codex provider config', () => {
     expect(resolved.baseUrl).toBe('https://chatgpt.com/backend-api/codex')
   })
 
+  test('resolves gpt5.5 shorthand to gpt-5.5 responses transport with reasoning', async () => {
+    const { resolveProviderRequest } = await importFreshProviderConfigModule()
+    delete process.env.OPENAI_BASE_URL
+    delete process.env.OPENAI_API_BASE
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+
+    const resolved = resolveProviderRequest({ model: 'gpt5.5' })
+    expect(resolved.transport).toBe('codex_responses')
+    expect(resolved.requestedModel).toBe('gpt5.5')
+    expect(resolved.resolvedModel).toBe('gpt-5.5')
+    expect(resolved.reasoning).toEqual({ effort: 'high' })
+    expect(resolved.baseUrl).toBe('https://chatgpt.com/backend-api/codex')
+  })
+
+  test('routes gpt-5.5 to Codex backend when OpenAI base URL is the default', async () => {
+    const { resolveProviderRequest } = await importFreshProviderConfigModule()
+    process.env.OPENAI_BASE_URL = 'https://api.openai.com/v1'
+    delete process.env.OPENAI_API_BASE
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+
+    const resolved = resolveProviderRequest({ model: 'gpt-5.5' })
+    expect(resolved.transport).toBe('codex_responses')
+    expect(resolved.resolvedModel).toBe('gpt-5.5')
+    expect(resolved.baseUrl).toBe('https://chatgpt.com/backend-api/codex')
+  })
+
+  test('does not override custom base URL for gpt-5.5', async () => {
+    const { resolveProviderRequest } = await importFreshProviderConfigModule()
+    process.env.OPENAI_BASE_URL = 'http://localhost:11434/v1'
+    delete process.env.CLAUDE_CODE_USE_GITHUB
+
+    const resolved = resolveProviderRequest({ model: 'gpt-5.5' })
+    expect(resolved.transport).toBe('chat_completions')
+    expect(resolved.resolvedModel).toBe('gpt-5.5')
+    expect(resolved.baseUrl).toBe('http://localhost:11434/v1')
+  })
+
   test('resolves codexspark alias to Codex transport with Codex base URL', async () => {
     const { resolveProviderRequest } = await importFreshProviderConfigModule()
     delete process.env.OPENAI_BASE_URL

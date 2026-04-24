@@ -44,6 +44,13 @@ test('resolveProviderRequest routes GitHub GPT-5 codex models to responses trans
   expect(r.transport).toBe('codex_responses')
 })
 
+test('resolveProviderRequest routes GitHub GPT-5.5 shorthand to responses transport', () => {
+  process.env.CLAUDE_CODE_USE_GITHUB = '1'
+  const r = resolveProviderRequest({ model: 'gpt5.5' })
+  expect(r.resolvedModel).toBe('gpt-5.5')
+  expect(r.transport).toBe('codex_responses')
+})
+
 test('resolveProviderRequest keeps gpt-5-mini on chat_completions for GitHub', () => {
   process.env.CLAUDE_CODE_USE_GITHUB = '1'
   const r = resolveProviderRequest({ model: 'gpt-5-mini' })

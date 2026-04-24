@@ -27,6 +27,9 @@ export const VALID_PROVIDERS = [
 
 export type ProviderFlagName = (typeof VALID_PROVIDERS)[number]
 
+export const CLI_PROVIDER_ENV_KEY = 'OPENCLAUDE_CLI_PROVIDER'
+export const CLI_MODEL_ENV_KEY = 'OPENCLAUDE_CLI_MODEL'
+
 /**
  * Extract the value of --provider from argv.
  * Returns null if the flag is absent or has no value.
@@ -89,6 +92,12 @@ export function applyProviderFlag(
   delete process.env.CLAUDE_CODE_USE_VERTEX
 
   const model = parseModelFlag(args)
+  process.env[CLI_PROVIDER_ENV_KEY] = provider
+  if (model) {
+    process.env[CLI_MODEL_ENV_KEY] = model
+  } else {
+    delete process.env[CLI_MODEL_ENV_KEY]
+  }
 
   switch (provider as ProviderFlagName) {
     case 'anthropic':
