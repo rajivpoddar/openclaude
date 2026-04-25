@@ -53,6 +53,23 @@ test('gpt-5.4 on the OpenAI provider still supports effort selection', async () 
   ])
 })
 
+test('gpt-5.5 and gpt5.5 support OpenAI effort selection', async () => {
+  const { getAvailableEffortLevels, modelSupportsEffort } =
+    await importFreshEffortModule({
+      provider: 'openai',
+      supportsCodexReasoningEffort: true,
+    })
+
+  expect(modelSupportsEffort('gpt-5.5')).toBe(true)
+  expect(modelSupportsEffort('gpt5.5')).toBe(true)
+  expect(getAvailableEffortLevels('gpt-5.5')).toEqual([
+    'low',
+    'medium',
+    'high',
+    'xhigh',
+  ])
+})
+
 test('gpt-5.3-codex-spark stays without effort controls', async () => {
   const { getAvailableEffortLevels, modelSupportsEffort } =
     await importFreshEffortModule({

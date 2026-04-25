@@ -164,6 +164,7 @@ import { isEnvTruthy } from './envUtils.js'
 import { errorMessage, getErrnoCode } from './errors.js'
 
 const TOOL_HOOK_EXECUTION_TIMEOUT_MS = 10 * 60 * 1000
+const COMMAND_HOOK_PROMPT_STDIN_GRACE_MS = 100
 
 /**
  * SessionEnd hooks run during shutdown/clear and need a much tighter bound
@@ -1064,6 +1065,16 @@ async function execCommandHook(
   let promptChain = Promise.resolve()
   // Line buffer for detecting prompt requests in streaming output
   let lineBuffer = ''
+  let promptRequestDetected = false
+  let closeStdinAfterPromptGrace:
+    | ReturnType<typeof setTimeout>
+    | undefined
+
+  const closeStdinIfOpen = () => {
+    if (!child.stdin.destroyed && !child.stdin.writableEnded) {
+      child.stdin.end()
+    }
+  }
 
   child.stdout.on('data', data => {
     stdout += data
@@ -1083,6 +1094,11 @@ async function execCommandHook(
           const parsed = jsonParse(trimmed)
           const validation = promptRequestSchema().safeParse(parsed)
           if (validation.success) {
+            promptRequestDetected = true
+            if (closeStdinAfterPromptGrace) {
+              clearTimeout(closeStdinAfterPromptGrace)
+              closeStdinAfterPromptGrace = undefined
+            }
             processedPromptLines.add(trimmed)
             logForDebugging(
               `Hooks: Detected prompt request from hook: ${trimmed}`,
@@ -1093,7 +1109,13 @@ async function execCommandHook(
             promptChain = promptChain.then(async () => {
               try {
                 const response = await reqPrompt(promptReq)
-                child.stdin.write(jsonStringify(response) + '\n', 'utf8')
+                if (!child.stdin.destroyed && !child.stdin.writableEnded) {
+                  child.stdin.write(jsonStringify(response) + '\n', 'utf8')
+                } else {
+                  logForDebugging(
+                    'Hooks: Prompt response skipped because hook stdin is already closed',
+                  )
+                }
               } catch (err) {
                 logForDebugging(`Hooks: Prompt request handling failed: ${err}`)
                 // User cancelled or prompt failed — close stdin so the hook
@@ -1208,9 +1230,17 @@ async function execCommandHook(
         })
         // Explicitly specify UTF-8 encoding to ensure proper handling of Unicode characters
         child.stdin.write(jsonInput + '\n', 'utf8')
-        // When requestPrompt is provided, keep stdin open for prompt responses
-        if (!requestPrompt) {
-          child.stdin.end()
+        if (requestPrompt) {
+          // Most command hooks read the JSON payload until EOF. Keep stdin open
+          // only briefly so hooks using the prompt-request protocol can emit
+          // their first request; otherwise close it so EOF-based hooks run.
+          closeStdinAfterPromptGrace = setTimeout(() => {
+            if (!promptRequestDetected) {
+              closeStdinIfOpen()
+            }
+          }, COMMAND_HOOK_PROMPT_STDIN_GRACE_MS)
+        } else {
+          closeStdinIfOpen()
         }
         resolve()
       })
@@ -1327,6 +1357,10 @@ async function execCommandHook(
       })
     }
     stopProgressInterval()
+    if (closeStdinAfterPromptGrace) {
+      clearTimeout(closeStdinAfterPromptGrace)
+      closeStdinAfterPromptGrace = undefined
+    }
     // Clean up stream resources unless ownership was transferred (e.g., to async hook registry)
     if (!shellCommandTransferred) {
       shellCommand.cleanup()

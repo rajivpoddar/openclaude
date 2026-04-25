@@ -173,6 +173,31 @@ function DelayedControlledVimTextInput(): React.ReactNode {
   )
 }
 
+function SubmitClearsControlledTextInput(): React.ReactNode {
+  const [value, setValue] = React.useState('')
+  const [cursorOffset, setCursorOffset] = React.useState(0)
+
+  return (
+    <AppStateProvider>
+      <TextInput
+        value={value}
+        onChange={setValue}
+        onSubmit={() => {
+          setValue('')
+          setCursorOffset(0)
+        }}
+        placeholder="Type here..."
+        columns={60}
+        cursorOffset={cursorOffset}
+        onChangeCursorOffset={setCursorOffset}
+        focus
+        showCursor
+        multiline
+      />
+    </AppStateProvider>
+  )
+}
+
 test('TextInput renders typed characters before delayed parent value commits', async () => {
   const { stdout, stdin, getOutput } = createTestStreams()
   const root = await createRoot({
@@ -198,6 +223,31 @@ test('TextInput renders typed characters before delayed parent value commits', a
 
   expect(output).toContain('ab')
   expect(output).not.toContain('Type here...')
+})
+
+test('TextInput clears submitted text when text and enter arrive in one chunk', async () => {
+  const { stdout, stdin, getOutput } = createTestStreams()
+  const root = await createRoot({
+    stdout: stdout as unknown as NodeJS.WriteStream,
+    stdin: stdin as unknown as NodeJS.ReadStream,
+    patchConsole: false,
+  })
+
+  root.render(<SubmitClearsControlledTextInput />)
+
+  await Bun.sleep(50)
+  stdin.write('hello\r')
+  await Bun.sleep(50)
+
+  const output = stripAnsi(extractLastFrame(getOutput()))
+
+  root.unmount()
+  stdin.end()
+  stdout.end()
+  await Bun.sleep(25)
+
+  expect(output).toContain('Type here...')
+  expect(output).not.toContain('hello')
 })
 
 test('maskTextWithVisibleEdges preserves only the first and last three chars', () => {

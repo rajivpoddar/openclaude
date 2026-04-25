@@ -38,6 +38,14 @@ const CODEX_ALIAS_MODELS: Record<
     model: 'gpt-5.4',
     reasoningEffort: 'high',
   },
+  'gpt-5.5': {
+    model: 'gpt-5.5',
+    reasoningEffort: 'high',
+  },
+  'gpt5.5': {
+    model: 'gpt-5.5',
+    reasoningEffort: 'high',
+  },
   'gpt-5.3-codex': {
     model: 'gpt-5.3-codex',
     reasoningEffort: 'high',
@@ -72,7 +80,12 @@ const CODEX_ALIAS_MODELS: Record<
 type CodexAlias = keyof typeof CODEX_ALIAS_MODELS
 type ReasoningEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
-const OPENAI_CODEX_SHORTCUT_ALIASES = new Set(['codexplan', 'codexspark'])
+const OPENAI_CODEX_SHORTCUT_ALIASES = new Set([
+  'codexplan',
+  'codexspark',
+  'gpt-5.5',
+  'gpt5.5',
+])
 
 export type ProviderTransport = 'chat_completions' | 'codex_responses'
 
@@ -560,7 +573,7 @@ export function resolveProviderRequest(options?: {
   const isGithubCustom = isGithubMode && githubEndpointType === 'custom'
 
   const githubResolvedModel = isGithubMode
-    ? normalizeGithubModelsApiModel(requestedModel)
+    ? normalizeGithubModelsApiModel(descriptor.baseModel)
     : requestedModel
 
   const transport: ProviderTransport =

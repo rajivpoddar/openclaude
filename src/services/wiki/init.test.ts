@@ -26,10 +26,10 @@ test('initializeWiki creates the expected wiki scaffold', async () => {
 
   expect(result.alreadyExisted).toBe(false)
   expect(result.createdFiles).toEqual([
-    join('.openclaude', 'wiki', 'schema.md'),
-    join('.openclaude', 'wiki', 'index.md'),
-    join('.openclaude', 'wiki', 'log.md'),
-    join('.openclaude', 'wiki', 'pages', 'architecture.md'),
+    join('.claude', 'wiki', 'schema.md'),
+    join('.claude', 'wiki', 'index.md'),
+    join('.claude', 'wiki', 'log.md'),
+    join('.claude', 'wiki', 'pages', 'architecture.md'),
   ])
   expect(await readFile(paths.schemaFile, 'utf8')).toContain(
     '# OpenClaude Wiki Schema',
