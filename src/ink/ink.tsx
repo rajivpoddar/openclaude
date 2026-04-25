@@ -177,6 +177,21 @@ export default class Ink {
     x: number;
     y: number;
   } | null = null;
+  // Adaptive throttle backoff for slow commits. When a React commit takes
+  // >SLOW_COMMIT_MS, defer the next scheduleRender invocation until this
+  // timestamp so the event loop can drain pending stdin/keyboard events.
+  // Updated in onRender's post-commit section based on getLastCommitMs().
+  private cooldownUntilMs = 0;
+  // Threshold above which a commit triggers cooldown. Set above
+  // App.NORMAL_TIMEOUT (50ms) so single fast paints don't trigger backoff;
+  // we only defer when commits are heavy enough to plausibly block stdin.
+  private readonly SLOW_COMMIT_MS = 80;
+  // Multiplier applied to the slow commit's duration to derive the
+  // cooldown period. 4x means a 100ms commit produces 400ms of cooldown,
+  // letting up to ~25 keystrokes/sec land between heavy frames.
+  private readonly COOLDOWN_MULTIPLIER = 4;
+  // Cap cooldown so an extreme outlier doesn't freeze the UI for seconds.
+  private readonly COOLDOWN_MAX_MS = 1000;
   private reportRenderError = (label: string, error: unknown): void => {
     const message =
       error instanceof Error ? `${error.name}: ${error.message}` : String(error);
@@ -222,7 +237,27 @@ export default class Ink {
     // a one-keystroke lag. Same event-loop tick, so throughput is unchanged.
     // Test env uses onImmediateRender (direct onRender, no throttle) so
     // existing synchronous lastFrame() tests are unaffected.
-    const deferredRender = (): void => queueMicrotask(this.onRender);
+    //
+    // Adaptive backoff: when a recent commit took >SLOW_COMMIT_MS, we're
+    // event-loop starved (Ink's heavy React commit blocks stdin reads,
+    // making typing feel unresponsive — see STDIN_TRACE drift events). The
+    // standard throttle keeps re-rendering at FRAME_INTERVAL_MS, but each
+    // frame still costs >throttle-interval to commit, so the loop never
+    // catches its breath. cooldownUntilMs records the timestamp until which
+    // scheduleRender should defer via setTimeout instead of queueMicrotask,
+    // letting pending stdin/keyboard events drain. Cooldown duration scales
+    // with the slow commit's measured cost. Resets on the first non-slow
+    // commit so live-updating UIs (e.g., spinner) stay smooth under normal
+    // load.
+    const deferredRender = (): void => {
+      const now = performance.now();
+      if (now < this.cooldownUntilMs) {
+        const wait = this.cooldownUntilMs - now;
+        setTimeout(this.onRender, wait);
+        return;
+      }
+      queueMicrotask(this.onRender);
+    };
     this.scheduleRender = throttle(deferredRender, FRAME_INTERVAL_MS, {
       leading: true,
       trailing: true
@@ -787,6 +822,23 @@ export default class Ink {
     }
     const yogaMs = getLastYogaMs();
     const commitMs = getLastCommitMs();
+    // Adaptive throttle backoff (#openclaude-event-loop-starvation).
+    // If this commit was slow enough to block the event loop, defer the
+    // next scheduleRender call by COOLDOWN_MULTIPLIER × commitMs so stdin
+    // and keyboard handlers can drain. A fast commit clears any prior
+    // cooldown so live UIs (spinner, progress) recover smoothly.
+    if (commitMs > this.SLOW_COMMIT_MS) {
+      const cooldown = Math.min(
+        commitMs * this.COOLDOWN_MULTIPLIER,
+        this.COOLDOWN_MAX_MS,
+      );
+      this.cooldownUntilMs = performance.now() + cooldown;
+      logForDebugging(
+        `[Ink] adaptive cooldown engaged: commitMs=${commitMs.toFixed(1)} cooldown_ms=${cooldown.toFixed(0)}`,
+      );
+    } else if (this.cooldownUntilMs !== 0) {
+      this.cooldownUntilMs = 0;
+    }
     const yc = this.lastYogaCounters;
     // Reset so drain-only frames (no React commit) don't repeat stale values.
     resetProfileCounters();
