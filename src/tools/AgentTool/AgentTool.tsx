@@ -428,7 +428,28 @@ export const AgentTool = buildTool({
     });
 
     // Resolve effective isolation mode (explicit param overrides agent def)
-    const effectiveIsolation = isolation ?? selectedAgent.isolation;
+    let effectiveIsolation = isolation ?? selectedAgent.isolation;
+
+    // Hard guard: even after the prompt-only nudge in commit 90851a4, GPT-5.5
+    // still sets isolation: "worktree" on read-mostly subagents (plan-agent,
+    // qa-tester, explore). Worktree creation pollutes eslint scans, locks the
+    // parent branch, and risks artifact loss when the worktree is cleaned up
+    // before the agent persists writes. When OPENCLAUDE_DISABLE_AGENT_WORKTREES
+    // is truthy, strip the worktree request at runtime regardless of source
+    // (model, agent definition, or explicit caller param).
+    //
+    // Set OPENCLAUDE_DISABLE_AGENT_WORKTREES=1 in launch-openclaude.sh. Override
+    // per-invocation by setting OPENCLAUDE_DISABLE_AGENT_WORKTREES=0 if you
+    // genuinely need parallel code-changing isolation.
+    if (
+      effectiveIsolation === 'worktree' &&
+      isEnvTruthy(process.env.OPENCLAUDE_DISABLE_AGENT_WORKTREES)
+    ) {
+      logForDebugging(
+        `Agent worktree isolation suppressed by OPENCLAUDE_DISABLE_AGENT_WORKTREES (agent=${selectedAgent.agentType}); running in parent cwd.`,
+      );
+      effectiveIsolation = undefined;
+    }
 
     // Remote isolation: delegate to CCR. Gated internal-only — the guard enables
     // dead code elimination of the entire block for external builds.
