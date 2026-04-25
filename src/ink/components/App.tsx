@@ -4,6 +4,7 @@ import { stopCapturingEarlyInput } from '../../utils/earlyInput.js';
 import { isEnvTruthy } from '../../utils/envUtils.js';
 import { isMouseClicksDisabled } from '../../utils/fullscreen.js';
 import { logError } from '../../utils/log.js';
+import { logForDebugging } from '../../utils/debug.js';
 import { EventEmitter } from '../events/emitter.js';
 import { InputEvent } from '../events/input-event.js';
 import { TerminalFocusEvent } from '../events/terminal-focus-event.js';
@@ -32,6 +33,29 @@ const SUPPORTS_SUSPEND = process.platform !== 'win32';
 // but no signal reaches us. 5s is well above normal inter-keystroke gaps
 // but short enough that the first scroll after reattach works.
 const STDIN_RESUME_GAP_MS = 5000;
+
+// Stdin diagnostic tracing (gate via OPENCLAUDE_STDIN_TRACE=1).
+// Writes to the configured debug file (--debug-file, or default
+// ~/.claude/debug/<sessionId>.txt) on every stdin chunk, key parse, and
+// flush. Pair with a 1Hz event-loop heartbeat to detect React commits
+// that block the loop past 50ms NORMAL_TIMEOUT — the smoking gun for
+// "pane unresponsive" reports where mop tmux send-keys lands but human
+// keystrokes appear lost.
+//
+// Usage:
+//   OPENCLAUDE_STDIN_TRACE=1 openclaude ...
+//   # then: grep STDIN_TRACE /tmp/openclaude-slot4.log
+//
+// Heartbeat lines look like:
+//   STDIN_TRACE heartbeat drift_ms=842
+// Anything > 100ms drift means the event loop was blocked that long.
+const STDIN_TRACE_ENABLED = isEnvTruthy(process.env.OPENCLAUDE_STDIN_TRACE);
+const HEARTBEAT_INTERVAL_MS = 1000;
+const HEARTBEAT_DRIFT_THRESHOLD_MS = 100;
+function traceStdin(message: string): void {
+  if (!STDIN_TRACE_ENABLED) return;
+  logForDebugging(`STDIN_TRACE ${message}`, { level: 'info' });
+}
 type Props = {
   readonly children: ReactNode;
   readonly stdin: NodeJS.ReadStream;
@@ -150,6 +174,11 @@ export default class App extends PureComponent<Props, State> {
   // Initialized to now so startup doesn't false-trigger.
   lastStdinTime = Date.now();
 
+  // Event-loop heartbeat for STDIN_TRACE diagnostics. Logs only when actual
+  // interval exceeds threshold so quiet periods don't spam the log.
+  heartbeatTimer: NodeJS.Timeout | null = null;
+  lastHeartbeatTime = 0;
+
   // Determines if TTY is supported on the provided stdin
   isRawModeSupported(): boolean {
     return this.props.stdin.isTTY;
@@ -186,6 +215,19 @@ export default class App extends PureComponent<Props, State> {
     if (this.props.stdout.isTTY && !isEnvTruthy(process.env.CLAUDE_CODE_ACCESSIBILITY)) {
       this.props.stdout.write(HIDE_CURSOR);
     }
+    if (STDIN_TRACE_ENABLED) {
+      traceStdin('mount stdin_trace=enabled');
+      this.lastHeartbeatTime = Date.now();
+      this.heartbeatTimer = setInterval(() => {
+        const now = Date.now();
+        const drift = now - this.lastHeartbeatTime - HEARTBEAT_INTERVAL_MS;
+        if (drift > HEARTBEAT_DRIFT_THRESHOLD_MS) {
+          traceStdin(`heartbeat drift_ms=${drift}`);
+        }
+        this.lastHeartbeatTime = now;
+      }, HEARTBEAT_INTERVAL_MS);
+      this.heartbeatTimer.unref?.();
+    }
   }
   override componentWillUnmount() {
     if (this.props.stdout.isTTY) {
@@ -196,6 +238,10 @@ export default class App extends PureComponent<Props, State> {
     if (this.incompleteEscapeTimer) {
       clearTimeout(this.incompleteEscapeTimer);
       this.incompleteEscapeTimer = null;
+    }
+    if (this.heartbeatTimer) {
+      clearInterval(this.heartbeatTimer);
+      this.heartbeatTimer = null;
     }
     if (this.pendingHyperlinkTimer) {
       clearTimeout(this.pendingHyperlinkTimer);
@@ -307,10 +353,16 @@ export default class App extends PureComponent<Props, State> {
     // drain stdin next and clear this timer. Prevents both the spurious
     // Escape key and the lost scroll event.
     if (this.props.stdin.readableLength > 0) {
+      if (STDIN_TRACE_ENABLED) {
+        traceStdin(`flushIncomplete rearm readableLength=${this.props.stdin.readableLength}`);
+      }
       this.incompleteEscapeTimer = setTimeout(this.flushIncomplete, this.NORMAL_TIMEOUT);
       return;
     }
 
+    if (STDIN_TRACE_ENABLED) {
+      traceStdin(`flushIncomplete flush mode=${this.keyParseState.mode}`);
+    }
     // Process incomplete as a flush operation (input=null)
     // This reuses all existing parsing logic
     this.processInput(null);
@@ -318,6 +370,7 @@ export default class App extends PureComponent<Props, State> {
 
   // Process input through the parser and handle the results
   processInput = (input: string | Buffer | null): void => {
+    const traceStart = STDIN_TRACE_ENABLED ? Date.now() : 0;
     // Parse input using our state machine
     const [keys, newState] = parseMultipleKeypresses(this.keyParseState, input);
     this.keyParseState = newState;
@@ -329,6 +382,12 @@ export default class App extends PureComponent<Props, State> {
     // listeners together within one high-priority update context.
     if (keys.length > 0) {
       reconciler.discreteUpdates(processKeysInBatch, this, keys, undefined, undefined);
+    }
+
+    if (STDIN_TRACE_ENABLED) {
+      traceStdin(
+        `processInput keys=${keys.length} incomplete=${this.keyParseState.incomplete ? 1 : 0} mode=${this.keyParseState.mode} elapsed_ms=${Date.now() - traceStart}`,
+      );
     }
 
     // If we have incomplete escape sequences, set a timer to flush them
@@ -349,10 +408,21 @@ export default class App extends PureComponent<Props, State> {
     if (now - this.lastStdinTime > STDIN_RESUME_GAP_MS) {
       this.props.onStdinResume?.();
     }
+    if (STDIN_TRACE_ENABLED) {
+      traceStdin(
+        `handleReadable gap_ms=${now - this.lastStdinTime} readableLength=${this.props.stdin.readableLength}`,
+      );
+    }
     this.lastStdinTime = now;
     try {
       let chunk;
+      let chunkIdx = 0;
       while ((chunk = this.props.stdin.read() as string | null) !== null) {
+        if (STDIN_TRACE_ENABLED) {
+          const len = typeof chunk === 'string' ? chunk.length : (chunk as Buffer).length;
+          traceStdin(`readable chunk[${chunkIdx}] bytes=${len}`);
+          chunkIdx++;
+        }
         // Process the input chunk
         this.processInput(chunk);
       }
@@ -381,6 +451,10 @@ export default class App extends PureComponent<Props, State> {
     const now = Date.now();
     if (now - this.lastStdinTime > STDIN_RESUME_GAP_MS) {
       this.props.onStdinResume?.();
+    }
+    if (STDIN_TRACE_ENABLED) {
+      const len = typeof chunk === 'string' ? chunk.length : chunk.length;
+      traceStdin(`handleDataChunk gap_ms=${now - this.lastStdinTime} bytes=${len}`);
     }
     this.lastStdinTime = now;
     try {
